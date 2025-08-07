@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Run tests
+        run: go test ./...
+
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.semver.outputs.next }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate version
+        id: semver
+        uses: ietf-tools/semver-action@v1
+        with:
+          token: ${{ github.token }}
+          branch: main
+
+  build:
+    needs: [test,version]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+            suffix: linux-armv7
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          go build -o pmount-${{ matrix.suffix }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmount-${{ matrix.suffix }}
+          path: pmount-${{ matrix.suffix }}
+
+  release:
+    needs: [build,version]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
+      - name: Move artifacts to root
+        run: |
+          find artifacts -type f -name "pmount-*" -exec mv {} . \;
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.version }}
+          name: Release ${{ needs.version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            pmount-linux-amd64
+            pmount-linux-arm64
+            pmount-linux-armv7
+          body: |
+            ## Changes
+            
+            Automatically generated release for commit ${{ github.sha }}
+            
+            ## Installation
+            
+            Download the appropriate binary for your platform and make it executable:
+            
+            ```bash
+            # Linux x64
+            curl -LO https://github.com/${{ github.repository }}/releases/download/${{ steps.semver.outputs.next }}/pmount-linux-amd64
+            chmod +x pmount-linux-amd64
+            sudo mv pmount-linux-amd64 /usr/local/bin/pmount
+
+            # Linux Arm64
+            curl -LO https://github.com/${{ github.repository }}/releases/download/${{ steps.semver.outputs.next }}/pmount-linux-arm64
+            chmod +x pmount-linux-arm64
+            sudo mv pmount-linux-arm64 /usr/local/bin/pmount
+
+            # Linux Arm v7
+            curl -LO https://github.com/${{ github.repository }}/releases/download/${{ steps.semver.outputs.next }}/pmount-linux-armv7
+            chmod +x pmount-linux-armv7
+            sudo mv pmount-linux-armv7 /usr/local/bin/pmount
+            ```
