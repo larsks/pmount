@@ -1,11 +1,36 @@
 # pmount - Partition Mount Utility
 
-A program that automatically mounts all partitions from a block device or disk image to separate directories.
+A program that automatically mounts all partitions from a block device or disk image to separate directories. That is, given a disk image that looks like this:
 
-## Features
+```bash
+$ fdisk -l disk.img
+Disk disk.img: 2.73 GiB, 2927624192 bytes, 5718016 sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x7351b90c
 
-- Mount all partitions from a block device to individual directories
-- Supports a variety of disk image formats using `qemu-nbd`
+Device     Boot   Start     End Sectors  Size Id Type
+disk.img1         16384 1064959 1048576  512M  c W95 FAT32 (LBA)
+disk.img2       1064960 5718015 4653056  2.2G 83 Linux
+```
+
+Running:
+
+```
+sudo pmount --format raw disk.img /mnt
+```
+
+Results in:
+
+```
+$ mount | grep /mnt
+/dev/nbd1p1 on /mnt/partition1 type vfat (rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,errors=remount-ro)
+/dev/nbd1p2 on /mnt/partition2 type ext4 (rw,relatime,seclabel)
+```
+
+Pmount supports any disk format supported by `qemu-nbd` (which includes raw disk images, qcow2, vmdk, and others).
 
 ## Requirements
 
@@ -17,11 +42,13 @@ A program that automatically mounts all partitions from a block device or disk i
 ## Usage
 
 ### Mounting a block device:
+
 ```bash
 sudo ./pmount /dev/sdb /mnt/usb
 ```
 
 ### Mounting a disk image:
+
 ```bash
 sudo ./pmount disk.img /mnt/image
 sudo ./pmount --format qcow2 disk.qcow2 /mnt/image
@@ -29,31 +56,20 @@ sudo ./pmount --format vmdk disk.vmdk /mnt/image
 ```
 
 ### Unmounting:
+
 ```bash
 sudo ./pmount --unmount /dev/sdb /mnt/usb
 sudo ./pmount --unmount disk.img /mnt/image
 ```
 
-## How it works
-
-1. **Disk images**: Attaches the image using `qemu-nbd`, then discovers partitions
-2. **Block devices**: Uses `sfdisk` to discover partitions on the device
-3. **Directory structure**: Creates `partition1`, `partition2`, etc. subdirectories in the target directory
-4. **Mounting**: Attempts to mount each partition, logging failures without stopping
-5. **Cleanup**: On unmount, discovers currently mounted partitions, extracts NBD device information from mount sources, unmounts all partitions, removes per-partition directories (but preserves the target directory), and disconnects NBD connections
-
 ## Building
 
 ```bash
-go build -o pmount .
+make
 ```
 
 ## Testing
 
 ```bash
-go test -v
+make test
 ```
-
-## Security Note
-
-This program requires root privileges to mount filesystems. Always verify the source device and target directory before running.
