@@ -1,4 +1,4 @@
-package main
+package mountmanager
 
 import (
 	"fmt"
