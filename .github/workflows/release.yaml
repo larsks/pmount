@@ -9,18 +9,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: stable
-
-      - name: Run tests
-        run: go test ./...
+    uses: ./.github/workflows/test.yaml
 
   version:
     runs-on: ubuntu-latest
@@ -40,7 +29,7 @@ jobs:
           branch: main
 
   build:
-    needs: [test,version]
+    needs: [test, version]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -82,7 +71,7 @@ jobs:
           path: pmount-${{ matrix.suffix }}
 
   release:
-    needs: [build,version]
+    needs: [build, version]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -112,13 +101,13 @@ jobs:
             pmount-linux-armv7
           body: |
             ## Changes
-            
+
             Automatically generated release for commit ${{ github.sha }}
-            
+
             ## Installation
-            
+
             Download the appropriate binary for your platform and make it executable:
-            
+
             ```bash
             # Linux x64
             curl -LO https://github.com/${{ github.repository }}/releases/download/${{ steps.semver.outputs.next }}/pmount-linux-amd64
