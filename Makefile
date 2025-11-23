@@ -3,11 +3,12 @@ GOTEST ?=  go test
 GOFORMAT ?= go fmt
 GOLANGCI_LINT ?= golangci-lint
 
-all: build
+GOFILES = $(shell go list -f '{{range .GoFiles}}{{$$.Dir}}/{{.}}{{"\n"}}{{end}}' ./...)
 
-.PHONY: build
-build:
-	$(GO) build
+all: pmount
+
+pmount: $(GOFILES)
+	$(GO) build -o $@ ./cmd/pmount
 
 .PHONY: test
 test:
@@ -23,3 +24,7 @@ lint:
 format:
 	@echo "## FORMAT"
 	@$(GOFORMAT) ./...
+
+.PHONY: clean
+clean:
+	rm -f pmount

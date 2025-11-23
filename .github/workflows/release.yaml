@@ -62,7 +62,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
         run: |
-          go build -o pmount-${{ matrix.suffix }}
+          go build -o pmount-${{ matrix.suffix }} ./cmd/pmount
 
       - name: Upload binary
         uses: actions/upload-artifact@v5
