@@ -105,26 +105,31 @@ func (mm *MountManager) extractNBDDevice() {
 }
 
 func (mm *MountManager) findFreeNBDDevice() (string, error) {
-	for i := range 16 {
-		nbdDevice := fmt.Sprintf("/dev/nbd%d", i)
+	i := 0
+	for {
+		nbdDevice := fmt.Sprintf("nbd%d", i)
+		nbdDevicePath := fmt.Sprintf("/dev/%s", nbdDevice)
+		nbdSysFSPath := fmt.Sprintf("/sys/class/block/%s", nbdDevice)
+		i++
 
-		// Check if NBD device exists
-		if _, err := os.Stat(nbdDevice); os.IsNotExist(err) {
-			continue
+		// If nbdDevicePath does not exist, assume we have reached the end of
+		// available nbd devices.
+		if _, err := os.Stat(nbdDevicePath); os.IsNotExist(err) {
+			break
 		}
 
 		// Check if device is in use by looking for the pid file
-		pidFile := fmt.Sprintf("/sys/class/block/nbd%d/pid", i)
+		pidFile := fmt.Sprintf("%s/pid", nbdSysFSPath)
 		if _, err := os.Stat(pidFile); err == nil {
 			// If pid file exists, NBD device is in use
 			continue
 		}
 
 		// Device appears free
-		return nbdDevice, nil
+		return nbdDevicePath, nil
 	}
 
-	return "", fmt.Errorf("no free NBD devices found (checked /dev/nbd0 through /dev/nbd15)")
+	return "", fmt.Errorf("no free NBD devices found (checked /dev/nbd0 through /dev/nbd%d)", i)
 }
 
 func (mm *MountManager) attachImageWithNBD() error {
