@@ -5,9 +5,11 @@ GOLANGCI_LINT ?= golangci-lint
 
 GOFILES = $(shell go list -f '{{range .GoFiles}}{{$$.Dir}}/{{.}}{{"\n"}}{{end}}' ./...)
 
-all: pmount
+EXE = pmount
 
-pmount: $(GOFILES)
+all: $(EXE)
+
+$(EXE): $(GOFILES)
 	$(GO) build -o $@ ./cmd/pmount
 
 .PHONY: test
