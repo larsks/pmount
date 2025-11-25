@@ -10,14 +10,21 @@ import (
 	"strings"
 )
 
-func NewMountManager(sourceDevice, targetDir, format, nbdDevice string) *MountManager {
+func NewMountManager(sourceDevice, targetDir, format, nbdDevice, profileName string) (*MountManager, error) {
+	profile, err := NewProfile(profileName)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MountManager{
 		sourceDevice:      sourceDevice,
 		targetDir:         targetDir,
 		format:            format,
 		nbdDeviceExplicit: nbdDevice,
+		profileName:       profileName,
+		profile:           profile,
 		logger:            log.New(os.Stdout, "[pmount] ", log.LstdFlags),
-	}
+	}, nil
 }
 
 func (mm *MountManager) isImageFile() bool {
@@ -26,6 +33,44 @@ func (mm *MountManager) isImageFile() bool {
 		return false
 	}
 	return info.Mode().IsRegular()
+}
+
+// findMountedDevice returns the device mounted at the given path, or empty string if not mounted
+func (mm *MountManager) findMountedDevice(mountPath string) (string, error) {
+	cmd := exec.Command("findmnt", "-J", "-M", mountPath)
+	output, err := cmd.Output()
+	if err != nil {
+		// Path not mounted
+		return "", nil
+	}
+
+	// Parse findmnt JSON output to get mounted device
+	var findmntData struct {
+		Filesystems []struct {
+			Target string `json:"target"`
+			Source string `json:"source"`
+		} `json:"filesystems"`
+	}
+
+	if err := json.Unmarshal(output, &findmntData); err != nil {
+		return "", fmt.Errorf("failed to parse findmnt output for %s: %w", mountPath, err)
+	}
+
+	if len(findmntData.Filesystems) > 0 {
+		return findmntData.Filesystems[0].Source, nil
+	}
+
+	return "", nil
+}
+
+// addPartition adds a partition to the manager's partition list (used by profiles during unmount)
+func (mm *MountManager) addPartition(device string, number int) {
+	partition := Partition{
+		Device: device,
+		Number: number,
+		Size:   "unknown",
+	}
+	mm.partitions = append(mm.partitions, partition)
 }
 
 func (mm *MountManager) discoverMountedPartitions() error {
@@ -42,29 +87,13 @@ func (mm *MountManager) discoverMountedPartitions() error {
 		}
 
 		partitionPath := filepath.Join(mm.targetDir, entry.Name())
-
-		// Use findmnt to check if this partition directory is mounted
-		cmd := exec.Command("findmnt", "-J", "-M", partitionPath)
-		output, err := cmd.Output()
+		device, err := mm.findMountedDevice(partitionPath)
 		if err != nil {
-			// Directory not mounted, skip
+			mm.logger.Printf("warning: %v", err)
 			continue
 		}
 
-		// Parse findmnt JSON output to get mounted device
-		var findmntData struct {
-			Filesystems []struct {
-				Target string `json:"target"`
-				Source string `json:"source"`
-			} `json:"filesystems"`
-		}
-
-		if err := json.Unmarshal(output, &findmntData); err != nil {
-			mm.logger.Printf("warning: failed to parse findmnt output for %s: %v", partitionPath, err)
-			continue
-		}
-
-		if len(findmntData.Filesystems) > 0 {
+		if device != "" {
 			// Extract partition number from directory name (partition1 -> 1)
 			partName := entry.Name()
 			if len(partName) > 9 { // "partition" is 9 chars
@@ -76,7 +105,7 @@ func (mm *MountManager) discoverMountedPartitions() error {
 					}
 
 					partition := Partition{
-						Device: findmntData.Filesystems[0].Source,
+						Device: device,
 						Number: num,
 						Size:   "unknown", // We don't need size for unmounting
 					}
@@ -235,35 +264,7 @@ func (mm *MountManager) createTargetDirectories() error {
 	return nil
 }
 
-func (mm *MountManager) mountPartitions() error {
-	for _, partition := range mm.partitions {
-		partDir := filepath.Join(mm.targetDir, fmt.Sprintf("partition%d", partition.Number))
-
-		cmd := exec.Command("mount", partition.Device, partDir)
-		if err := cmd.Run(); err != nil {
-			mm.logger.Printf("failed to mount %s to %s: %v", partition.Device, partDir, err)
-			continue
-		}
-		mm.logger.Printf("mounted %s (%s) to %s", partition.Device, partition.Size, partDir)
-	}
-	return nil
-}
-
-func (mm *MountManager) unmountPartitions() error {
-	for _, partition := range mm.partitions {
-		partDir := filepath.Join(mm.targetDir, fmt.Sprintf("partition%d", partition.Number))
-
-		cmd := exec.Command("umount", partDir)
-		if err := cmd.Run(); err != nil {
-			mm.logger.Printf("failed to unmount %s: %v", partDir, err)
-			continue
-		}
-		mm.logger.Printf("unmounted %s", partDir)
-	}
-	return nil
-}
-
-func (mm *MountManager) removePartitionDirectories() error {
+func (mm *MountManager) removePartitionDirectories() error { //nolint:unparam
 	for _, partition := range mm.partitions {
 		partDir := filepath.Join(mm.targetDir, fmt.Sprintf("partition%d", partition.Number))
 		if err := os.Remove(partDir); err != nil {
@@ -289,28 +290,26 @@ func (mm *MountManager) Mount() error {
 		return nil
 	}
 
-	if err := mm.createTargetDirectories(); err != nil {
+	// Validate partitions against profile requirements
+	if err := mm.profile.Validate(mm.partitions); err != nil {
 		return err
 	}
 
-	return mm.mountPartitions()
+	// Use profile to mount partitions
+	return mm.profile.Mount(mm, mm.partitions)
 }
 
 func (mm *MountManager) Unmount() error {
-	if err := mm.discoverMountedPartitions(); err != nil {
-		return fmt.Errorf("failed to discover mounted partitions: %w", err)
+	// Initialize partitions slice (profiles will populate during unmount)
+	mm.partitions = []Partition{}
+
+	// Use profile to discover and unmount partitions
+	if err := mm.profile.Unmount(mm); err != nil {
+		return err
 	}
 
 	// Extract NBD device if any partitions are on NBD
 	mm.extractNBDDevice()
-
-	if err := mm.unmountPartitions(); err != nil {
-		return err
-	}
-
-	if err := mm.removePartitionDirectories(); err != nil {
-		return err
-	}
 
 	if mm.nbdDevice != "" {
 		return mm.detachNBD()

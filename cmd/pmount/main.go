@@ -10,6 +10,18 @@ import (
 	mm "github.com/larsks/pmount/internal/mountmanager"
 )
 
+type (
+	Options struct {
+		unmount   bool
+		format    string
+		nbdDevice string
+		profile   string
+		help      bool
+	}
+)
+
+var options Options
+
 func printUsage() {
 	fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] <device_or_image> <target_directory>\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s --unmount <target_directory>\n", os.Args[0])
@@ -18,22 +30,29 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  %s disk.img /mnt/image\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "  %s --format qcow2 disk.qcow2 /mnt/image\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "  %s --nbd-device /dev/nbd2 disk.img /mnt/image\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --profile single single-partition.img /mnt/image\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --profile raspberrypi raspios.img /mnt/rpi\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --unmount --profile single /mnt/image\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "  %s --unmount /mnt/usb\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "\nOptions:\n")
 	pflag.PrintDefaults()
 }
 
-func main() {
+func init() {
 	// Define command line flags
-	var unmount = pflag.BoolP("unmount", "u", false, "unmount partitions and clean up")
-	var format = pflag.StringP("format", "f", "", "image format for qemu-nbd (e.g., qcow2, raw, vmdk)")
-	var nbdDevice = pflag.StringP("nbd-device", "d", "", "specify NBD device to use (e.g., /dev/nbd1)")
-	var help = pflag.BoolP("help", "h", false, "show this help message")
+	pflag.BoolVarP(&options.unmount, "unmount", "u", false, "unmount partitions and clean up")
+	pflag.BoolVarP(&options.unmount, "umount", "", false, "unmount partitions and clean up")
+	pflag.StringVarP(&options.format, "format", "f", "", "image format for qemu-nbd (e.g., qcow2, raw, vmdk)")
+	pflag.StringVarP(&options.nbdDevice, "nbd-device", "d", "", "specify NBD device to use (e.g., /dev/nbd1)")
+	pflag.StringVarP(&options.profile, "profile", "p", "default", "mount profile to use (default, single, raspberrypi)")
+	pflag.BoolVarP(&options.help, "help", "h", false, "show this help message")
+}
 
+func main() {
 	pflag.Parse()
 
 	// Handle help flag
-	if *help {
+	if options.help {
 		printUsage()
 		os.Exit(0)
 	}
@@ -42,7 +61,7 @@ func main() {
 	args := pflag.Args()
 
 	var device, targetDir string
-	if *unmount {
+	if options.unmount {
 		// For unmount, only target directory is required
 		if len(args) != 1 {
 			fmt.Fprintf(os.Stderr, "Error: --unmount requires exactly one argument (target directory)\n")
@@ -62,9 +81,9 @@ func main() {
 		targetDir = args[1]
 	}
 
-	currentUser, err := user.Current()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to get current user: %v\n", err)
+	currentUser, userErr := user.Current()
+	if userErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to get current user: %v\n", userErr)
 		os.Exit(1)
 	}
 	if currentUser.Uid != "0" {
@@ -72,8 +91,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	manager := mm.NewMountManager(device, targetDir, *format, *nbdDevice)
-	if *unmount {
+	manager, err := mm.NewMountManager(device, targetDir, options.format, options.nbdDevice, options.profile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if options.unmount {
 		err = manager.Unmount()
 	} else {
 		err = manager.Mount()

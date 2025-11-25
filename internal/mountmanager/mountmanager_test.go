@@ -8,7 +8,10 @@ import (
 )
 
 func TestNewMountManager(t *testing.T) {
-	mm := NewMountManager("/dev/sda", "/mnt/test", "", "")
+	mm, err := NewMountManager("/dev/sda", "/mnt/test", "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 
 	if mm.sourceDevice != "/dev/sda" {
 		t.Errorf("Expected sourceDevice to be /dev/sda, got %s", mm.sourceDevice)
@@ -25,10 +28,21 @@ func TestNewMountManager(t *testing.T) {
 	if mm.logger == nil {
 		t.Error("Expected logger to be initialized")
 	}
+
+	if mm.profileName != "default" {
+		t.Errorf("Expected profileName to be default, got %s", mm.profileName)
+	}
+
+	if mm.profile == nil {
+		t.Error("Expected profile to be initialized")
+	}
 }
 
 func TestNewMountManagerWithFormat(t *testing.T) {
-	mm := NewMountManager("/path/to/disk.qcow2", "/mnt/test", "qcow2", "")
+	mm, err := NewMountManager("/path/to/disk.qcow2", "/mnt/test", "qcow2", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 
 	if mm.sourceDevice != "/path/to/disk.qcow2" {
 		t.Errorf("Expected sourceDevice to be /path/to/disk.qcow2, got %s", mm.sourceDevice)
@@ -45,13 +59,19 @@ func TestNewMountManagerWithFormat(t *testing.T) {
 
 func TestNBDDeviceSelection(t *testing.T) {
 	// Test automatic NBD device discovery
-	mm := NewMountManager("/path/to/disk.img", "/mnt/test", "raw", "")
+	mm, err := NewMountManager("/path/to/disk.img", "/mnt/test", "raw", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 	if mm.nbdDeviceExplicit != "" {
 		t.Errorf("Expected nbdDeviceExplicit to be empty for auto discovery, got %s", mm.nbdDeviceExplicit)
 	}
 
 	// Test explicit NBD device
-	mm2 := NewMountManager("/path/to/disk.img", "/mnt/test", "raw", "/dev/nbd5")
+	mm2, err := NewMountManager("/path/to/disk.img", "/mnt/test", "raw", "/dev/nbd5", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 	if mm2.nbdDeviceExplicit != "/dev/nbd5" {
 		t.Errorf("Expected nbdDeviceExplicit to be /dev/nbd5, got %s", mm2.nbdDeviceExplicit)
 	}
@@ -68,13 +88,19 @@ func TestIsImageFile(t *testing.T) {
 	}
 	f.Close()
 
-	mm := NewMountManager(testFile, "/mnt/test", "", "")
+	mm, err := NewMountManager(testFile, "/mnt/test", "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 	if !mm.isImageFile() {
 		t.Error("Expected isImageFile to return true for regular file")
 	}
 
 	// Test with non-existent file
-	mm2 := NewMountManager("/dev/nonexistent", "/mnt/test", "", "")
+	mm2, err := NewMountManager("/dev/nonexistent", "/mnt/test", "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 	if mm2.isImageFile() {
 		t.Error("Expected isImageFile to return false for non-existent file")
 	}
@@ -84,13 +110,16 @@ func TestCreateTargetDirectories(t *testing.T) {
 	tempDir := t.TempDir()
 	targetDir := filepath.Join(tempDir, "mount_target")
 
-	mm := NewMountManager("/dev/test", targetDir, "", "")
+	mm, err := NewMountManager("/dev/test", targetDir, "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 	mm.partitions = []Partition{
 		{Device: "/dev/test1", Number: 1, Size: "1G"},
 		{Device: "/dev/test2", Number: 2, Size: "2G"},
 	}
 
-	err := mm.createTargetDirectories()
+	err = mm.createTargetDirectories()
 	if err != nil {
 		t.Fatalf("Failed to create target directories: %v", err)
 	}
@@ -132,7 +161,10 @@ func TestRemovePartitionDirectories(t *testing.T) {
 		t.Fatalf("Failed to create partition2 directory: %v", err)
 	}
 
-	mm := NewMountManager("/dev/test", targetDir, "", "")
+	mm, err := NewMountManager("/dev/test", targetDir, "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 	mm.partitions = []Partition{
 		{Device: "/dev/test1", Number: 1, Size: "1G"},
 		{Device: "/dev/test2", Number: 2, Size: "2G"},
@@ -159,7 +191,10 @@ func TestRemovePartitionDirectories(t *testing.T) {
 }
 
 func TestGetActiveDevice(t *testing.T) {
-	mm := NewMountManager("/dev/sda", "/mnt/test", "", "")
+	mm, err := NewMountManager("/dev/sda", "/mnt/test", "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 
 	// Test without NBD device
 	if mm.getActiveDevice() != "/dev/sda" {
@@ -174,7 +209,10 @@ func TestGetActiveDevice(t *testing.T) {
 }
 
 func TestExtractNBDDevice(t *testing.T) {
-	mm := NewMountManager("/dev/test", "/mnt/test", "", "")
+	mm, err := NewMountManager("/dev/test", "/mnt/test", "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 
 	// Test with NBD partitions
 	mm.partitions = []Partition{
@@ -188,7 +226,10 @@ func TestExtractNBDDevice(t *testing.T) {
 	}
 
 	// Test with non-NBD partitions
-	mm2 := NewMountManager("/dev/test", "/mnt/test", "", "")
+	mm2, err := NewMountManager("/dev/test", "/mnt/test", "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 	mm2.partitions = []Partition{
 		{Device: "/dev/sda1", Number: 1, Size: "1G"},
 		{Device: "/dev/sda2", Number: 2, Size: "2G"},
@@ -221,7 +262,10 @@ func TestDiscoverMountedPartitions(t *testing.T) {
 		}
 	}
 
-	mm := NewMountManager("/dev/test", targetDir, "", "")
+	mm, err := NewMountManager("/dev/test", targetDir, "", "", "default")
+	if err != nil {
+		t.Fatalf("NewMountManager() error = %v", err)
+	}
 
 	// This will call findmnt on each partition directory
 	// Since these aren't actually mounted, we expect 0 partitions discovered

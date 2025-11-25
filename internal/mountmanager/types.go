@@ -38,4 +38,6 @@ type MountManager struct {
 	logger            *log.Logger
 	format            string
 	nbdDeviceExplicit string
+	profileName       string
+	profile           MountProfile
 }
