@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/pflag"
 
 	mm "github.com/larsks/pmount/internal/mountmanager"
+	"github.com/larsks/pmount/internal/version"
 )
 
 type (
@@ -17,6 +18,7 @@ type (
 		nbdDevice string
 		profile   string
 		help      bool
+		version   bool
 	}
 )
 
@@ -25,6 +27,8 @@ var options Options
 func printUsage() {
 	fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] <device_or_image> <target_directory>\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "       %s --unmount <target_directory>\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "       %s (--version | --help)\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "\nExamples:\n")
 	fmt.Fprintf(os.Stderr, "  %s /dev/sdb /mnt/usb\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "  %s disk.img /mnt/image\n", os.Args[0])
@@ -46,6 +50,7 @@ func init() {
 	pflag.StringVarP(&options.nbdDevice, "nbd-device", "d", "", "specify NBD device to use (e.g., /dev/nbd1)")
 	pflag.StringVarP(&options.profile, "profile", "p", "default", "mount profile to use (default, single, raspberrypi)")
 	pflag.BoolVarP(&options.help, "help", "h", false, "show this help message")
+	pflag.BoolVarP(&options.version, "version", "", false, "show version")
 }
 
 func main() {
@@ -54,6 +59,11 @@ func main() {
 	// Handle help flag
 	if options.help {
 		printUsage()
+		os.Exit(0)
+	}
+
+	if options.version {
+		fmt.Printf("%s\n", version.GetVersion(os.Args[0]))
 		os.Exit(0)
 	}
 

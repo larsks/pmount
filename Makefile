@@ -7,10 +7,14 @@ GOFILES = $(shell go list -f '{{range .GoFiles}}{{$$.Dir}}/{{.}}{{"\n"}}{{end}}'
 
 EXE = pmount
 
+PKG = $(shell grep '^module ' go.mod | cut -f2 -d ' ')
+VERSION = $(shell git describe --tags 2> /dev/null || echo dev)
+COMPILE =	go build -o $@ -ldflags '-X $(PKG)/internal/version.Version=$(VERSION)'
+
 all: $(EXE)
 
 $(EXE): $(GOFILES)
-	$(GO) build -o $@ ./cmd/pmount
+	$(COMPILE) ./cmd/pmount/
 
 .PHONY: test
 test:
