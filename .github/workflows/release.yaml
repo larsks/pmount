@@ -65,7 +65,7 @@ jobs:
           make EXE=pmount-${{ matrix.suffix }}
 
       - name: Upload binary
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: pmount-${{ matrix.suffix }}
           path: pmount-${{ matrix.suffix }}
